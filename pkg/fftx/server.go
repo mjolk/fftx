@@ -45,9 +45,7 @@ func (s *udpServer) Recv(ctx context.Context) (int, int, error) {
 	receiving := 1
 	for receiving > 0 {
 
-		log.Printf("---------------->>>reading  %d \n", size)
 		recvd, _, err := s.sender.ReadFromUDP(tmp)
-		log.Printf("rcvd: %d \n", recvd)
 		received += recvd
 		if errors.Is(err, io.EOF) || received == int(size) {
 			log.Printf("eof or done: %d \n", received)
@@ -60,7 +58,6 @@ func (s *udpServer) Recv(ctx context.Context) (int, int, error) {
 		if recvd == 0 {
 			continue
 		}
-		log.Printf("writing: %d \n", received)
 
 		w, err := s.file.Write(tmp[0:recvd])
 		if err != nil {
@@ -70,7 +67,6 @@ func (s *udpServer) Recv(ctx context.Context) (int, int, error) {
 		if w < recvd {
 			log.Printf("writer cannot follow, dropped %d bytes \n", recvd-w)
 		}
-		log.Printf("written: %d  requested %d \n", written, size)
 	}
 
 	return received, written, nil

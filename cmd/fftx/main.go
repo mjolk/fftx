@@ -56,7 +56,6 @@ func main() {
 						"sent: %d  bytes \n",
 						sent,
 					)
-					time.Sleep(8 * time.Second)
 					return nil
 				},
 			},
