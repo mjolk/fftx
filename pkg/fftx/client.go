@@ -1,12 +1,16 @@
 package fftx
 
 import (
+	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"log"
 	"net"
 	"os"
 )
+
+const HEADER_SIZE = 8
 
 type client struct {
 	path string
@@ -15,22 +19,56 @@ type client struct {
 	file *os.File
 	sink *net.UDPConn
 	sent int64
+	addr *net.UDPAddr
 }
 
-func (c *client) Send() error {
-	/*defer func() {
-		c.sink.Close()
-		c.file.Close()
-	}()*/
-
-	w, err := io.Copy(c.sink, c.file)
+func (c *client) Send() (int, error) {
+	written := 0
+	info, err := c.file.Stat()
 	if err != nil {
-		log.Printf("error copying data %s \n", err)
-		return err
+		return written, err
 	}
-	c.sent += w
-	log.Printf("sent %d mb\n", w/1024)
-	return nil
+
+	b := make([]byte, HEADER_SIZE)
+	binary.LittleEndian.PutUint64(b, uint64(info.Size()))
+	written, err = c.sink.Write(b)
+	if err != nil {
+		return written, err
+	}
+	log.Printf("written header of size: %d \n", written)
+
+	tmp := make([]byte, 1024*32)
+	written = 0
+	// sf := io.NewSectionReader(c.file, 1024*1024, info.Size())
+	for {
+		read, err := c.file.Read(tmp)
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return written, err
+		}
+
+		if read == 0 {
+			continue
+		}
+		log.Printf("read %d bytes\n", read)
+
+		w, err := c.sink.Write(tmp[0:read])
+		if w < 0 || read < w {
+			w = 0
+			if err == nil {
+				return written, errors.New("Invalid write")
+			}
+		}
+		log.Printf("sent %d bytes\n", w)
+		written += w
+		if err != nil {
+			return written, err
+		}
+	}
+
+	return written, nil
 }
 
 func NewClient(
@@ -46,11 +84,11 @@ func NewClient(
 	if err != nil {
 		return nil, err
 	}
-	addr, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", c.ip, c.port))
+	c.addr, err = net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", c.ip, c.port))
 	if err != nil {
 		return nil, err
 	}
-	c.sink, err = net.DialUDP("udp", nil, addr)
+	c.sink, err = net.DialUDP("udp", nil, c.addr)
 	log.Printf(
 		"------------>>>udp sink %+v \n",
 		c.sink,
