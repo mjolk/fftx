@@ -27,7 +27,7 @@ func main() {
 					},
 					&cli.StringFlag{
 						Name:    "ip",
-						Value:   `192.168.50.198`,
+						Value:   `192.168.50.3`,
 						Usage:   "ip to send to",
 						Aliases: []string{"i"},
 					},
@@ -65,7 +65,7 @@ func main() {
 				Flags: []cli.Flag{
 					&cli.StringFlag{
 						Name:    "host",
-						Value:   `192.168.50.198`,
+						Value:   `192.168.50.3`,
 						Usage:   "host",
 						Aliases: []string{"h"},
 					},
