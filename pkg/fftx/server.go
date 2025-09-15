@@ -43,31 +43,32 @@ func (s *udpServer) Recv(ctx context.Context) (int, int, error) {
 	tmp := make([]byte, 1024*32)
 	received = 0
 	receiving := 1
+	receives := 0
 	for receiving > 0 {
 
 		recvd, _, err := s.sender.ReadFromUDP(tmp)
 		received += recvd
+		receives++
 		if errors.Is(err, io.EOF) || received == int(size) {
 			log.Printf("eof or done: %d \n", received)
 			receiving = 0
 		}
-		if err != nil {
+		if err != nil && receiving > 0 {
 			return received, written, err
 		}
 
-		if recvd == 0 {
-			continue
-		}
-
-		w, err := s.file.Write(tmp[0:recvd])
-		if err != nil {
-			return received, w, err
-		}
-		written += w
-		if w < recvd {
-			log.Printf("writer cannot follow, dropped %d bytes \n", recvd-w)
+		if recvd > 0 {
+			w, err := s.file.Write(tmp[0:recvd])
+			if err != nil {
+				return received, w, err
+			}
+			written += w
+			if w < recvd {
+				log.Printf("writer cannot follow, dropped %d bytes \n", recvd-w)
+			}
 		}
 	}
+	log.Printf("receives nr %d \n", receives)
 
 	return received, written, nil
 }

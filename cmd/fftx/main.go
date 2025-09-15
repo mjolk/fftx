@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"time"
 
 	"github.com/urfave/cli/v3"
 
@@ -27,7 +28,7 @@ func main() {
 					},
 					&cli.StringFlag{
 						Name:    "ip",
-						Value:   `192.168.50.3`,
+						Value:   `192.168.50.198`,
 						Usage:   "ip to send to",
 						Aliases: []string{"i"},
 					},
@@ -55,6 +56,9 @@ func main() {
 						"sent: %d  bytes \n",
 						sent,
 					)
+					time.Sleep(
+						2 * time.Second,
+					) // give the underlying system some extra time to push the data out
 					return nil
 				},
 			},
@@ -65,7 +69,7 @@ func main() {
 				Flags: []cli.Flag{
 					&cli.StringFlag{
 						Name:    "host",
-						Value:   `192.168.50.3`,
+						Value:   `192.168.50.198`,
 						Usage:   "host",
 						Aliases: []string{"h"},
 					},

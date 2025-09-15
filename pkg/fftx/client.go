@@ -40,34 +40,41 @@ func (c *client) Send() (int, error) {
 
 	tmp := make([]byte, 1024*32)
 	written = 0
-	ticker := time.NewTicker(1 * time.Millisecond)
+	ticker := time.NewTicker(500 * time.Microsecond)
+	done := false
 	// sf := io.NewSectionReader(c.file, 1024*1024, info.Size())
+	sends := 0
 	for range ticker.C {
 		read, err := c.file.Read(tmp)
 		if errors.Is(err, io.EOF) {
-			break
+			done = true
 		}
-		if err != nil {
+		if err != nil && !done {
+			log.Printf("not really done ---------------->>> ")
 			return written, err
 		}
 
-		if read == 0 {
-			continue
-		}
-
-		w, err := c.sink.Write(tmp[0:read])
-		if w < 0 || read < w {
-			w = 0
-			if err == nil {
-				return written, errors.New("Invalid write")
+		if read > 0 {
+			w, err := c.sink.Write(tmp[0:read])
+			if w < 0 || read < w {
+				w = 0
+				if err == nil {
+					return written, errors.New("Invalid write")
+				}
 			}
+			written += w
+			if err != nil {
+				return written, err
+			}
+			sends++
 		}
-		written += w
-		if err != nil {
-			return written, err
+
+		if done {
+			break
 		}
 	}
 
+	log.Printf("nr sends: %d ---------------->>> \n", sends)
 	return written, nil
 }
 
