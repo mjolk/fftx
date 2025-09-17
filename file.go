@@ -2,17 +2,8 @@ package main
 
 import (
 	"errors"
-	"io"
 	"os"
 )
-
-type File struct {
-	path   string
-	file   *os.File
-	writer *io.OffsetWriter
-	reader *io.SectionReader
-	size   int64
-}
 
 func openReadFile(path string) (*os.File, error) {
 	var err error
