@@ -22,13 +22,13 @@ func main() {
 				Flags: []cli.Flag{
 					&cli.StringFlag{
 						Name:    "file",
-						Value:   `/home/mjolk/Downloads/coh3.part1.rar`,
+						Value:   ``,
 						Usage:   "file",
 						Aliases: []string{"f"},
 					},
 					&cli.StringFlag{
 						Name:    "ip",
-						Value:   `192.168.50.198`,
+						Value:   ``,
 						Usage:   "ip to send to",
 						Aliases: []string{"i"},
 					},
@@ -69,19 +69,13 @@ func main() {
 				Flags: []cli.Flag{
 					&cli.StringFlag{
 						Name:    "host",
-						Value:   `192.168.50.198`,
+						Value:   ``,
 						Usage:   "host",
 						Aliases: []string{"h"},
 					},
 					&cli.StringFlag{
-						Name:    "source",
-						Value:   `udp:\\blabla:3245`,
-						Usage:   "allowed source ip",
-						Aliases: []string{"s"},
-					},
-					&cli.StringFlag{
 						Name:    "file",
-						Value:   `coh.rar`,
+						Value:   ``,
 						Usage:   "file path",
 						Aliases: []string{"f"},
 					},
