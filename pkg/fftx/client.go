@@ -11,7 +11,13 @@ import (
 	"time"
 )
 
-const HEADER_SIZE = 8
+const (
+	HEADER_SIZE = 8
+	// this depends on your network, lower number = higher flow -> more chance packets get bounced.
+	// A fluctuating flow would be faster but then we'd have to real time measure or detect packet loss and manage congestion
+	// which is a bunch of extra code/time, might as well use tcp then
+	FLOW = 3 * time.Microsecond
+)
 
 type client struct {
 	path string
@@ -40,7 +46,7 @@ func (c *client) Send() (int, error) {
 
 	tmp := make([]byte, 1024*32)
 	written = 0
-	ticker := time.NewTicker(500 * time.Microsecond)
+	ticker := time.NewTicker(FLOW)
 	done := false
 	// sf := io.NewSectionReader(c.file, 1024*1024, info.Size())
 	sends := 0
