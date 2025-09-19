@@ -8,7 +8,6 @@ import (
 	"log"
 	"net"
 	"os"
-	"time"
 )
 
 const (
@@ -16,7 +15,7 @@ const (
 	// this depends on your network, lower number = higher flow -> more chance packets get bounced.
 	// A fluctuating flow would be faster but then we'd have to real time measure or detect packet loss and manage congestion
 	// which is a bunch of extra code/time, might as well use tcp then
-	FLOW = 3 * time.Microsecond
+	// FLOW = 1 * time.Millisecond
 )
 
 type client struct {
@@ -36,8 +35,9 @@ func (c *client) Send() (int, error) {
 		return written, err
 	}
 
+	size := info.Size()
 	b := make([]byte, HEADER_SIZE)
-	binary.LittleEndian.PutUint64(b, uint64(info.Size()))
+	binary.LittleEndian.PutUint64(b, uint64(size))
 	written, err = c.sink.Write(b)
 	if err != nil {
 		return written, err
@@ -46,38 +46,54 @@ func (c *client) Send() (int, error) {
 
 	tmp := make([]byte, 1024*32)
 	written = 0
-	ticker := time.NewTicker(FLOW)
+	// ticker := time.NewTicker(FLOW)
 	done := false
+	block := int64(1024 * 1024 * 256)
+	rst := int64(size & (block - 1))
+	var xtra int64
+	if rst > 0 {
+		xtra++
+	}
+	nrblocks := (size-rst)/block + xtra
+	log.Printf("rest: %d xtra: %d nrblocks: %d \n", rst, xtra, nrblocks)
+	var cur int64
 	// sf := io.NewSectionReader(c.file, 1024*1024, info.Size())
 	sends := 0
-	for range ticker.C {
-		read, err := c.file.Read(tmp)
-		if errors.Is(err, io.EOF) {
-			done = true
-		}
-		if err != nil && !done {
-			log.Printf("not really done ---------------->>> ")
-			return written, err
-		}
-
-		if read > 0 {
-			w, err := c.sink.Write(tmp[0:read])
-			if w < 0 || read < w {
-				w = 0
-				if err == nil {
-					return written, errors.New("Invalid write")
-				}
+	for b := range nrblocks {
+		cur = 0
+		log.Printf("BLOCK %d \n", b)
+		for cur <= block {
+			read, err := c.file.Read(tmp)
+			if errors.Is(err, io.EOF) {
+				done = true
 			}
-			written += w
-			if err != nil {
+			if err != nil && !done {
+				log.Printf("not really done ---------------->>> ")
 				return written, err
 			}
-			sends++
-		}
 
-		if done {
-			break
+			if read > 0 {
+				cur += int64(read)
+				w, err := c.sink.Write(tmp[0:read])
+				if w < 0 || read < w {
+					w = 0
+					if err == nil {
+						return written, errors.New("Invalid write")
+					}
+				}
+				written += w
+				if err != nil {
+					return written, err
+				}
+				sends++
+			}
+			if done {
+				return written, nil
+			}
 		}
+		log.Printf("WRITTEN %d \n", written)
+		// time.Sleep(600 * time.Millisecond)
+
 	}
 
 	log.Printf("nr sends: %d ---------------->>> \n", sends)

@@ -25,10 +25,10 @@ func main() {
 						Aliases: []string{"f"},
 					},
 					&cli.StringFlag{
-						Name:    "ip",
+						Name:    "host",
 						Value:   ``,
-						Usage:   "ip to send to",
-						Aliases: []string{"i"},
+						Usage:   "host to send to",
+						Aliases: []string{"h"},
 					},
 					&cli.Int32Flag{
 						Aliases: []string{"p"},

@@ -67,6 +67,7 @@ func (s *udpServer) Recv(ctx context.Context) (int, int, error) {
 				log.Printf("writer cannot follow, dropped %d bytes \n", recvd-w)
 			}
 		}
+		log.Printf("recieved %d written %d \n", received, written)
 	}
 	log.Printf("receives nr %d \n", receives)
 
