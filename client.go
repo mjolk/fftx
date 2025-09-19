@@ -8,6 +8,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"time"
 )
 
 const (
@@ -48,7 +49,7 @@ func (c *client) Send() (int, error) {
 	written = 0
 	// ticker := time.NewTicker(FLOW)
 	done := false
-	block := int64(1024 * 1024 * 256)
+	block := int64(1024 * 16)
 	rst := int64(size & (block - 1))
 	var xtra int64
 	if rst > 0 {
@@ -91,8 +92,8 @@ func (c *client) Send() (int, error) {
 				return written, nil
 			}
 		}
-		log.Printf("WRITTEN %d \n", written)
-		// time.Sleep(600 * time.Millisecond)
+		log.Printf("WRITTEN %d \n", written/1024)
+		time.Sleep(1 * time.Millisecond)
 
 	}
 
@@ -113,11 +114,15 @@ func NewClient(
 	if err != nil {
 		return nil, err
 	}
-	c.addr, err = net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", c.ip, c.port))
-	if err != nil {
-		return nil, err
+	conn, err := sender(
+		1024*4,
+	).Dial("udp4", fmt.Sprintf("%s:%d", c.ip, c.port))
+
+	udp, ok := conn.(*net.UDPConn)
+	if !ok {
+		return nil, errors.New("no udp conn")
 	}
-	c.sink, err = net.DialUDP("udp", nil, c.addr)
+	c.sink = udp
 	log.Printf(
 		"------------>>>udp sink %+v \n",
 		c.sink,

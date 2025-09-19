@@ -13,14 +13,14 @@ import (
 
 type Server interface {
 	Recv(context.Context) (int, int, error)
-	Start() error
+	Start(context.Context) error
 }
 
 type udpServer struct {
 	file   *os.File
 	ip     string
 	port   int
-	sender *net.UDPConn
+	sender net.PacketConn
 }
 
 func (s *udpServer) Recv(ctx context.Context) (int, int, error) {
@@ -28,7 +28,7 @@ func (s *udpServer) Recv(ctx context.Context) (int, int, error) {
 	written := 0
 
 	b := make([]byte, HEADER_SIZE)
-	read, _, err := s.sender.ReadFromUDP(b[0:])
+	read, _, err := s.sender.ReadFrom(b[0:])
 	if err != nil {
 		return received, written, err
 	}
@@ -46,7 +46,7 @@ func (s *udpServer) Recv(ctx context.Context) (int, int, error) {
 	receives := 0
 	for receiving > 0 {
 
-		recvd, _, err := s.sender.ReadFromUDP(tmp)
+		recvd, _, err := s.sender.ReadFrom(tmp)
 		received += recvd
 		receives++
 		if errors.Is(err, io.EOF) || received == int(size) {
@@ -67,21 +67,19 @@ func (s *udpServer) Recv(ctx context.Context) (int, int, error) {
 				log.Printf("writer cannot follow, dropped %d bytes \n", recvd-w)
 			}
 		}
-		log.Printf("recieved %d written %d \n", received, written)
+		log.Printf("recieved %d written %d \n", received/1024, written/1024)
 	}
 	log.Printf("receives nr %d \n", receives)
 
 	return received, written, nil
 }
 
-func (s *udpServer) Start() error {
+func (s *udpServer) Start(ctx context.Context) error {
 	log.Printf("ipstring: %s \n", fmt.Sprintf("%s:%d", s.ip, s.port))
-	addr, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", s.ip, s.port))
-	if err != nil {
-		return err
-	}
-
-	s.sender, err = net.ListenUDP("udp", addr)
+	var err error
+	s.sender, err = listen(
+		1024*4,
+	).ListenPacket(ctx, "udp4", fmt.Sprintf("%s:%d", s.ip, s.port))
 	if err != nil {
 		return err
 	}

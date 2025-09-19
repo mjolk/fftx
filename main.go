@@ -91,7 +91,7 @@ func main() {
 						int(cmd.Int32("port")),
 						cmd.String("file"),
 					)
-					if err := srv.Start(); err != nil {
+					if err := srv.Start(ctx); err != nil {
 						return err
 					}
 					received, written, err := srv.Recv(ctx)

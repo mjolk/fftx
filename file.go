@@ -2,8 +2,41 @@ package main
 
 import (
 	"errors"
+	"log"
+	"net"
 	"os"
+	"syscall"
 )
+
+func sender(n int) *net.Dialer {
+	return &net.Dialer{
+		Control: func(network, address string, conn syscall.RawConn) error {
+			var operr error
+			if err := conn.Control(func(fd uintptr) {
+				operr = syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, syscall.SO_SNDBUF, n)
+			}); err != nil {
+				return err
+			}
+			return operr
+		},
+	}
+}
+
+func listen(n int) *net.ListenConfig {
+	return &net.ListenConfig{
+		Control: func(network, address string, conn syscall.RawConn) error {
+			var operr error
+			if err := conn.Control(func(fd uintptr) {
+				operr = syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, syscall.SO_RCVBUF, n)
+			}); err != nil {
+				log.Fatalf("could not set sock opt")
+				return err
+			}
+
+			return operr
+		},
+	}
+}
 
 func openReadFile(path string) (*os.File, error) {
 	var err error
