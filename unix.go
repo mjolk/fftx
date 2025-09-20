@@ -6,6 +6,8 @@ import (
 	"log"
 	"net"
 	"syscall"
+
+	"golang.org/x/sys/unix"
 )
 
 func sender(n int) *net.Dialer {
@@ -13,7 +15,7 @@ func sender(n int) *net.Dialer {
 		Control: func(network, address string, conn syscall.RawConn) error {
 			var operr error
 			if err := conn.Control(func(fd uintptr) {
-				operr = syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, syscall.SO_SNDBUF, n)
+				operr = syscall.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_SNDBUF, n)
 			}); err != nil {
 				return err
 			}
@@ -27,7 +29,7 @@ func listen(n int) *net.ListenConfig {
 		Control: func(network, address string, conn syscall.RawConn) error {
 			var operr error
 			if err := conn.Control(func(fd uintptr) {
-				operr = syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, syscall.SO_RCVBUF, n)
+				operr = syscall.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_RCVBUF, n)
 			}); err != nil {
 				log.Fatalf("could not set sock opt")
 				return err

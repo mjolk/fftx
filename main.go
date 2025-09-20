@@ -38,25 +38,26 @@ func main() {
 					},
 				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
-					client, err := NewClient(
+					send := NewSend(
 						cmd.String("file"),
-						cmd.String("ip"),
+						cmd.String("host"),
 						int(cmd.Int32("port")),
 					)
-					if err != nil {
+
+					if err := send.Start(ctx); err != nil {
 						return err
 					}
-					sent, err := client.Send()
-					if err != nil {
-						return err
-					}
-					log.Printf(
-						"sent: %d  bytes \n",
-						sent,
-					)
+
 					time.Sleep(
-						2 * time.Second,
-					) // give the underlying system some extra time to push the data out
+						1 * time.Second,
+					) // give the other side time to configure
+
+					written, err := send.Send(ctx)
+					if err != nil {
+						return err
+					}
+
+					log.Printf("Done, sent %d MB", written/1024)
 					return nil
 				},
 			},
@@ -86,23 +87,25 @@ func main() {
 				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
 					fmt.Println("Starting file recv: ", cmd.String("path"))
-					srv := NewudpServer(
+					receive := NewReceiver(
+						cmd.String("file"),
 						cmd.String("host"),
 						int(cmd.Int32("port")),
-						cmd.String("file"),
 					)
-					if err := srv.Start(ctx); err != nil {
+
+					if err := receive.Start(ctx); err != nil {
 						return err
 					}
-					received, written, err := srv.Recv(ctx)
+
+					read, written, err := receive.Recv(ctx)
 					if err != nil {
 						return err
 					}
 
 					log.Printf(
-						"received: %d bytes, written %d bytes \n",
-						received,
-						written,
+						"Done, read: %d MB, written: %d MB \n",
+						read/1024,
+						written/1024,
 					)
 					return nil
 				},
