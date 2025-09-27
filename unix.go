@@ -15,7 +15,12 @@ func sender(n int) *net.Dialer {
 		Control: func(network, address string, conn syscall.RawConn) error {
 			var operr error
 			if err := conn.Control(func(fd uintptr) {
+				log.Printf(" set sender buffer to: %d \n", n)
+				size := 0
 				operr = syscall.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_SNDBUF, n)
+				log.Printf("err setting sys buf: %d \n", operr)
+				size, operr = syscall.GetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_SNDBUF)
+				log.Printf("sender buffer: %d \n", size)
 			}); err != nil {
 				return err
 			}

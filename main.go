@@ -52,12 +52,17 @@ func main() {
 						1 * time.Second,
 					) // give the other side time to configure
 
-					written, err := send.Send(ctx)
+					written, read, err := send.Send(ctx)
 					if err != nil {
 						return err
 					}
 
-					log.Printf("Done, sent %d MB", written/1024)
+					log.Printf(
+						"Done, sent %d MB read from file: %d MB \n",
+						written/1024,
+						read/1024,
+					)
+					time.Sleep(2 * time.Second)
 					return nil
 				},
 			},

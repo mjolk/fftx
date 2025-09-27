@@ -21,12 +21,12 @@ const (
 )
 
 const (
-	CHAN_BUF_SIZE = int64(1024 * 1024 * 1024)
-	BLOCK_SIZE    = int64(1024 * 16)
+	CHAN_BUF_SIZE = int64(1024 * 1024 * 512)
+	BLOCK_SIZE    = int64(1024 * 32)
 )
 
 type Sender interface {
-	Send(context.Context, int64) (int, error)
+	Send(context.Context, int64) (int, int, error)
 	Start(context.Context) error
 }
 
@@ -43,17 +43,18 @@ func (c *senderChunk) Start(ctx context.Context) (err error) {
 	return
 }
 
-func (c *senderChunk) Send(ctx context.Context) (int, error) {
+func (c *senderChunk) Send(ctx context.Context) (int, int, error) {
 	log.Printf("chunk %d sending \n", c.id)
 	return c.sender.Send(ctx, c.offset)
 }
 
-func NewSenderChunk(ip, path string, port int, offset int64) *senderChunk {
+func NewSenderChunk(ip, path string, port, id int, offset int64) *senderChunk {
 	chunk := new(senderChunk)
 	chunk.ip = ip
 	chunk.path = path
 	chunk.port = port
 	chunk.offset = offset
+	chunk.id = id
 	return chunk
 }
 
@@ -67,9 +68,10 @@ type client struct {
 	addr *net.UDPAddr
 }
 
-func (c *client) Send(ctx context.Context, offset int64) (int, error) {
+func (c *client) Send(ctx context.Context, offset int64) (int, int, error) {
 	tmp := make([]byte, BLOCK_SIZE)
 	written := 0
+	read := 0
 	// ticker := time.NewTicker(FLOW)
 	done := false
 	rst := CHAN_BUF_SIZE & (BLOCK_SIZE - 1)
@@ -83,42 +85,43 @@ func (c *client) Send(ctx context.Context, offset int64) (int, error) {
 	sends := 0
 	_, err := c.file.Seek(offset, 0)
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 	for range nrblocks {
-		read, err := c.file.Read(tmp)
+		r, err := c.file.Read(tmp)
 		if errors.Is(err, io.EOF) {
 			done = true
 		}
 		if err != nil && !done {
 			log.Printf("not really done ---------------->>> ")
-			return written, err
+			return written, read, err
 		}
 
-		if read > 0 {
-			w, err := c.sink.Write(tmp[0:read])
-			if w < 0 || read < w {
+		if r > 0 {
+			read += r
+			w, err := c.sink.Write(tmp[0:r])
+			if w < 0 || r < w {
 				w = 0
 				if err == nil {
-					return written, errors.New("Invalid write")
+					return written, read, errors.New("Invalid write")
 				}
 			}
 			written += w
 			if err != nil {
-				return written, err
+				return written, read, err
 			}
 			sends++
 		}
 		if done {
-			return written, nil
+			return written, read, nil
 		}
 		// log.Printf("WRITTEN %d \n", written/1024)
 		time.Sleep(1 * time.Millisecond)
 
 	}
 
-	// log.Printf("nr sends: %d ---------------->>> \n", sends)
-	return written, nil
+	log.Printf("nr sends: %d ---------------->>> \n", sends)
+	return written, read, nil
 }
 
 func (c *client) Start(ctx context.Context) error {
@@ -128,7 +131,7 @@ func (c *client) Start(ctx context.Context) error {
 		return err
 	}
 	conn, err := /*sender(
-			1024,
+			1024*1024,
 		)*/net.Dial("udp4", fmt.Sprintf("%s:%d", c.ip, c.port))
 	if err != nil {
 		return err
@@ -185,33 +188,54 @@ func (s *send) Start(ctx context.Context) error {
 	s.size = info.Size()
 	rst := s.size & (CHAN_BUF_SIZE - 1)
 	var add int64
-	if rst < 0 {
+	if rst > 0 {
 		add++
 	}
 
-	s.chunkCount = (s.size-rst)/CHAN_BUF_SIZE + add
+	s.chunkCount = ((s.size - rst) / CHAN_BUF_SIZE) + add
+	log.Printf("chunkCount %d \n", s.chunkCount)
 	b := make([]byte, HEADER_SIZE)
 	binary.LittleEndian.PutUint64(b, uint64(s.size))
 	written, err := s.client.sink.Write(b)
 	if err != nil {
 		return err
 	}
-	log.Printf("written header of size: %d  file size: %d\n", written, s.size)
+	log.Printf(
+		"written header of size: %d  file size: %d rst: %d\n",
+		written,
+		s.size,
+		rst,
+	)
 	return nil
 }
 
-func (s *send) Send(ctx context.Context) (int, error) {
+func (s *send) Send(ctx context.Context) (int, int, error) {
 	completions := make(chan completion)
 	for c := range s.chunkCount {
-		log.Printf("sending to %s:%d \n", s.host, s.startPort+int(c+1))
+		log.Printf(
+			"sending to %s:%d chunknr: %d \n",
+			s.host,
+			s.startPort+int(c+1),
+			c,
+		)
+		offset := c * CHAN_BUF_SIZE
 		chunk := NewSenderChunk(
 			s.host,
 			s.path,
 			s.startPort+int(c+1),
-			c*CHAN_BUF_SIZE,
+			int(c),
+			offset,
 		)
 
-		log.Printf("offset %d \n", c*CHAN_BUF_SIZE)
+		end := min(offset+CHAN_BUF_SIZE, s.size)
+
+		log.Printf(
+			"-->> offset %d   \n -->> chunksize: %d \n -->> end+extraoffset: %d \n -->> total size: %d \n",
+			offset,
+			end-offset,
+			end,
+			s.size,
+		)
 
 		go func(chnk *senderChunk, cmp chan<- completion) {
 			err := chnk.Start(ctx)
@@ -220,32 +244,34 @@ func (s *send) Send(ctx context.Context) (int, error) {
 				return
 			}
 
-			written, err := chnk.Send(ctx)
+			written, read, err := chnk.Send(ctx)
 			if err != nil {
 				cmp <- completion{err: err}
 				return
 			}
 
-			cmp <- completion{written: written}
+			cmp <- completion{written: written, read: read}
 		}(chunk, completions)
 	}
 
 	written := 0
+	read := 0
 	for range s.chunkCount {
 		select {
 		case comp := <-completions:
 			if comp.err != nil {
 				log.Printf("chunk error: %s \n", comp.err)
-				return 0, comp.err
+				return 0, 0, comp.err
 			}
 			log.Printf("chunk complete: %+v \n", comp)
 			written += comp.written
+			read += comp.read
 		case <-ctx.Done():
-			return written, ctx.Err()
+			return written, read, ctx.Err()
 		}
 	}
 
-	return written, nil
+	return written, read, nil
 }
 
 func NewSend(path, host string, port int) *send {

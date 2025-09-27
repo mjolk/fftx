@@ -26,11 +26,12 @@ type chunk struct {
 
 type receiverChunk struct {
 	chunk
-	receiver Server
+	totalSize int64
+	receiver  Server
 }
 
 func (c *receiverChunk) Start(ctx context.Context) error {
-	c.receiver = NewudpServer(c.ip, c.port, c.path)
+	c.receiver = NewudpServer(c.ip, c.port, c.path, c.totalSize)
 	if err := c.receiver.Start(ctx); err != nil {
 		return err
 	}
@@ -45,7 +46,7 @@ func (c *receiverChunk) Recv(ctx context.Context) (int, int, error) {
 func NewReceiverChunk(
 	ip, path string,
 	port, id int,
-	offset int64,
+	offset, size int64,
 ) *receiverChunk {
 	chunk := new(receiverChunk)
 	chunk.ip = ip
@@ -53,21 +54,24 @@ func NewReceiverChunk(
 	chunk.port = port
 	chunk.offset = offset
 	chunk.id = id
+	chunk.totalSize = size
 	return chunk
 }
 
 type udpServer struct {
-	file   *os.File
-	ip     string
-	port   int
-	sender net.PacketConn
-	path   string
+	file      *os.File
+	ip        string
+	port      int
+	sender    *net.UDPConn
+	path      string
+	totalSize int64
 }
 
 type completion struct {
 	written int
 	read    int
 	err     error
+	id      int
 }
 
 func (s *udpServer) ReadHeader() (int64, error) {
@@ -101,8 +105,19 @@ func (s *udpServer) Recv(ctx context.Context, offset int64) (int, int, error) {
 		recvd, _, err := s.sender.ReadFrom(tmp)
 		received += recvd
 		receives++
-		if errors.Is(err, io.EOF) || received == int(CHAN_BUF_SIZE) {
-			log.Printf("eof or done: %d \n", received)
+		expected := min(CHAN_BUF_SIZE, s.totalSize-offset)
+		/*log.Printf(
+			"total size: %d, offset: %d, expected bytes: %d \n",
+			s.totalSize,
+			offset,
+			expected,
+		)*/
+		if errors.Is(err, io.EOF) || received == int(expected) {
+			log.Printf(
+				"eof %t or done: %d \n",
+				errors.Is(err, io.EOF),
+				received,
+			)
 			receiving = 0
 		}
 		if err != nil && receiving > 0 {
@@ -134,21 +149,24 @@ func (s *udpServer) Start(ctx context.Context) error {
 		s.file,
 	)
 	var err error
-	s.sender, err = listen(
-		1024*4,
-	).ListenPacket(ctx, "udp4", fmt.Sprintf("%s:%d", s.ip, s.port))
+	addr, err := net.ResolveUDPAddr("udp4", fmt.Sprintf("%s:%d", s.ip, s.port))
+	s.sender, err = /*listen(
+			1024*1024,
+		)*/net.ListenUDP("udp4", addr)
 	if err != nil {
 		return err
 	}
+	s.sender.SetReadBuffer(1024 * 1024)
 
 	return nil
 }
 
-func NewudpServer(ip string, port int, path string) *udpServer {
+func NewudpServer(ip string, port int, path string, size int64) *udpServer {
 	s := new(udpServer)
 	s.ip = ip
 	s.port = port
 	s.path = path
+	s.totalSize = size
 	return s
 }
 
@@ -161,7 +179,7 @@ type receiver struct {
 }
 
 func (r *receiver) Start(ctx context.Context) error {
-	r.client = NewudpServer(r.host, r.startPort, r.path)
+	r.client = NewudpServer(r.host, r.startPort, r.path, r.size)
 	if err := r.client.Start(ctx); err != nil {
 		return err
 	}
@@ -169,19 +187,20 @@ func (r *receiver) Start(ctx context.Context) error {
 }
 
 func (r *receiver) Recv(ctx context.Context) (int, int, error) {
-	size, err := r.client.ReadHeader()
+	var err error
+	r.size, err = r.client.ReadHeader()
 	if err != nil {
 		return 0, 0, err
 	}
-	log.Printf("receiving %d MB \n", size/(1024*1024))
+	log.Printf("receiving %d MB \n", r.size/(1024*1024))
 
 	var add int64
-	rst := int64(size & (CHAN_BUF_SIZE - 1))
+	rst := int64(r.size & (CHAN_BUF_SIZE - 1))
 	if rst > 0 {
 		add++
 	}
 
-	chunkCount := ((size - rst) / CHAN_BUF_SIZE)
+	chunkCount := ((r.size - rst) / CHAN_BUF_SIZE) + add
 	completions := make(chan completion)
 
 	for c := range chunkCount {
@@ -192,20 +211,22 @@ func (r *receiver) Recv(ctx context.Context) (int, int, error) {
 			r.startPort+int(c+1),
 			int(c),
 			c*CHAN_BUF_SIZE,
+			r.size,
 		)
 
 		go func(chnk *receiverChunk, compCh chan<- completion) {
 			err := chnk.Start(ctx)
 			if err != nil {
-				compCh <- completion{err: err}
+				compCh <- completion{err: err, id: chnk.id}
 				return
 			}
 			written, read, err := chnk.Recv(ctx)
 			if err != nil {
-				compCh <- completion{err: err}
+				compCh <- completion{err: err, id: chnk.id}
 				return
 			}
-			compCh <- completion{written: written, read: read}
+			log.Printf("chunk %d  \n", c)
+			compCh <- completion{written: written, read: read, id: chnk.id}
 		}(chunk, completions)
 	}
 
@@ -218,7 +239,7 @@ func (r *receiver) Recv(ctx context.Context) (int, int, error) {
 				log.Printf("chunk error: %s \n", complete.err)
 				return 0, 0, complete.err
 			}
-			log.Printf("chunk complete: %+v \n", complete)
+			log.Printf("chunk %d complete: %+v \n", complete.id, complete)
 			read += complete.read
 			written += complete.written
 		case <-ctx.Done():
