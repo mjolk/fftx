@@ -9,6 +9,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"time"
 )
 
 type Server interface {
@@ -193,7 +194,7 @@ func (r *receiver) Recv(ctx context.Context) (int, int, error) {
 		return 0, 0, err
 	}
 	log.Printf("receiving %d MB \n", r.size/(1024*1024))
-
+	start := time.Now()
 	var add int64
 	rst := int64(r.size & (CHAN_BUF_SIZE - 1))
 	if rst > 0 {
@@ -246,6 +247,9 @@ func (r *receiver) Recv(ctx context.Context) (int, int, error) {
 			return written, read, ctx.Err()
 		}
 	}
+
+	end := time.Now()
+	log.Printf("duration transfer: %f min\n", end.Sub(start).Minutes())
 
 	return read, written, nil
 }

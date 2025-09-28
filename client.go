@@ -21,8 +21,8 @@ const (
 )
 
 const (
-	CHAN_BUF_SIZE = int64(1024 * 1024 * 512)
-	BLOCK_SIZE    = int64(1024 * 32)
+	CHAN_BUF_SIZE = int64(1024 * 1024 * 256)
+	BLOCK_SIZE    = int64(1024 * 8)
 )
 
 type Sender interface {
